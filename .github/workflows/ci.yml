@@ -9,14 +9,31 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install fastapi uvicorn aiohttp openai httpx
       - name: Compile all Python files
-        run: python -c "import py_compile,os;[py_compile.compile(os.path.join(r,f),doraise=True) for r,_,fs in os.walk('engine') for f in fs if f.endswith('.py')];print('All compiled OK')"
+        run: |
+          python -c "
+          import py_compile, os
+          count = 0
+          for root, dirs, files in os.walk('engine'):
+              for f in files:
+                  if f.endswith('.py'):
+                      py_compile.compile(os.path.join(root, f), doraise=True)
+                      count += 1
+          print(f'{count} Python files compiled OK')
+          "
       - name: Check tool registry
-        run: python -c "from engine.tools.registry import get_tool_schemas;print(f'{len(get_tool_schemas())} tools registered')"
+        run: python -c "from engine.tools.registry import get_tool_schemas; print(f'{len(get_tool_schemas())} tools registered')"
       - name: Check DNA registry
-        run: python -c "from engine.dna.dna_registry import load_all;load_all();print('DNA registry OK')"
+        run: python -c "from engine.dna.dna_registry import load_all; load_all(); print('DNA registry OK')"
       - name: Check queue module
-        run: python -c "from engine.queue import task_queue;print('Queue OK')"
+        run: python -c "from engine.queue import task_queue; print('Queue OK')"
       - name: Check agent runner
-        run: python -c "from engine.agent_runner import agent_runner;print('Agent runner OK')"
+        run: python -c "from engine.agent_runner import agent_runner; print('Agent runner OK')"
+      - name: Check LLM client
+        run: python -c "from engine.llm_client import resolve_model; print(f'Default model: {resolve_model([])}'); print('LLM client OK')"
+      - name: Check reflection
+        run: python -c "from engine.reflection import reflect; print('Reflection OK')"
+      - name: Check planner
+        run: python -c "from engine.planner import plan; print('Planner OK')"
