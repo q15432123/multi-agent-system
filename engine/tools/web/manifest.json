@@ -1,0 +1,36 @@
+{
+  "name": "web",
+  "description": "Web search and HTTP API calls",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "search_web",
+        "description": "Search the web for information",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {"type": "string", "description": "Search query"}
+          },
+          "required": ["query"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "call_api",
+        "description": "Make an HTTP request to an API endpoint",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "url": {"type": "string", "description": "Full URL"},
+            "method": {"type": "string", "enum": ["GET","POST","PUT","DELETE","PATCH"]},
+            "body": {"type": "string", "description": "Request body (JSON string)"}
+          },
+          "required": ["url", "method"]
+        }
+      }
+    }
+  ]
+}

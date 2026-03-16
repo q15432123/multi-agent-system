@@ -1,0 +1,44 @@
+{
+  "name": "git",
+  "description": "Git version control operations",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "git_status",
+        "description": "Run git status in the agent's workspace",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "git_commit",
+        "description": "Stage all changes and commit with a message",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "message": {"type": "string", "description": "Commit message"}
+          },
+          "required": ["message"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "git_diff",
+        "description": "Show git diff of uncommitted changes",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    }
+  ]
+}

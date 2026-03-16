@@ -1,0 +1,35 @@
+{
+  "name": "file",
+  "description": "File system operations within agent workspace",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "write_file",
+        "description": "Write content to a file in the agent's workspace",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {"type": "string", "description": "Relative file path"},
+            "content": {"type": "string", "description": "File content"}
+          },
+          "required": ["path", "content"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "read_file",
+        "description": "Read a file from the agent's workspace",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {"type": "string", "description": "Relative file path"}
+          },
+          "required": ["path"]
+        }
+      }
+    }
+  ]
+}
