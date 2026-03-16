@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Agent-System — Setup</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#040408;--s1:#0a0a12;--bd:rgba(0,255,136,.1);--t1:#d8dcd8;--t2:rgba(160,180,160,.6);--ac:#00ff88;--r:#ff3355;--y:#ffc244;--b:#5eaaff}
+body{font-family:'SF Mono','Cascadia Code','Courier New',monospace;background:var(--bg);color:var(--t1);min-height:100vh;display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased}
+.setup{width:600px;padding:40px}
+h1{font-size:14px;color:var(--ac);letter-spacing:4px;text-transform:uppercase;margin-bottom:6px;text-shadow:0 0 10px rgba(0,255,136,.3)}
+.sub{font-size:10px;color:var(--t2);margin-bottom:30px}
+.section{border:1px solid var(--bd);padding:20px;margin-bottom:16px;background:var(--s1)}
+.section h2{font-size:10px;color:var(--ac);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px}
+.section p{font-size:10px;color:var(--t2);line-height:1.8;margin-bottom:10px}
+.code{background:rgba(0,255,136,.05);border:1px solid var(--bd);padding:8px 12px;font-size:10px;color:var(--ac);margin:8px 0;font-family:inherit}
+.status{margin:10px 0;font-size:10px}
+.status div{padding:3px 0;display:flex;align-items:center;gap:6px}
+.dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.dot.on{background:var(--ac);box-shadow:0 0 6px var(--ac)}
+.dot.off{background:var(--r);opacity:.6}
+.dot.warn{background:var(--y)}
+label{display:block;font-size:9px;color:var(--t2);letter-spacing:1px;text-transform:uppercase;margin:8px 0 4px}
+input[type=text]{width:100%;background:var(--bg);border:1px solid var(--bd);color:var(--t1);padding:7px 10px;font-family:inherit;font-size:10px;outline:none}
+input:focus{border-color:rgba(0,255,136,.3)}
+.row{display:flex;gap:8px;margin-top:12px}
+button{background:transparent;border:1px solid var(--bd);color:var(--t2);padding:8px 20px;cursor:pointer;font-family:inherit;font-size:9px;letter-spacing:1px;text-transform:uppercase;font-weight:600;transition:all .3s}
+button:hover{color:var(--ac);border-color:rgba(0,255,136,.3);box-shadow:0 0 12px rgba(0,255,136,.1)}
+button.primary{color:var(--ac);border-color:rgba(0,255,136,.25)}
+button.go{background:rgba(0,255,136,.08);color:var(--ac);border-color:rgba(0,255,136,.3);font-size:11px;padding:12px 30px;display:none;margin-top:20px}
+button.go.on{display:inline-block;animation:glow 2s ease-in-out infinite}
+@keyframes glow{0%,100%{box-shadow:0 0 10px rgba(0,255,136,.1)}50%{box-shadow:0 0 25px rgba(0,255,136,.2)}}
+.or{text-align:center;font-size:9px;color:var(--t2);padding:4px 0;letter-spacing:2px}
+.err{color:var(--r);font-size:9px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="setup">
+  <h1>Multi-Agent-System</h1>
+  <p class="sub">First time? Pick one way to connect your AI models.</p>
+
+  <!-- Section A: CLI Mode -->
+  <div class="section">
+    <h2>A. Use your AI subscriptions (free)</h2>
+    <p>If you already pay for Kimi / Claude / Gemini, just log in via CLI:</p>
+    <div class="code">
+      kimi login<br>
+      claude login<br>
+      gemini login
+    </div>
+    <p>Run any of these in a terminal, then click Detect:</p>
+    <div class="row">
+      <button class="primary" onclick="detect()">Detect CLI Tokens</button>
+    </div>
+    <div class="status" id="cli-status"></div>
+  </div>
+
+  <div class="or">— or —</div>
+
+  <!-- Section B: API Key Mode -->
+  <div class="section">
+    <h2>B. Paste API Keys</h2>
+    <label>OpenRouter API Key <span style="color:var(--ac)">(recommended — all models)</span></label>
+    <input type="text" id="key-openrouter" placeholder="sk-or-v1-...">
+    <label>Google Gemini API Key</label>
+    <input type="text" id="key-google" placeholder="AIzaSy...">
+    <label>OpenAI API Key</label>
+    <input type="text" id="key-openai" placeholder="sk-...">
+    <label>Moonshot (Kimi) API Key</label>
+    <input type="text" id="key-kimi" placeholder="sk-...">
+    <div class="row">
+      <button class="primary" onclick="saveKeys()">Save Keys</button>
+    </div>
+    <div id="key-status"></div>
+  </div>
+
+  <!-- Launch button -->
+  <div style="text-align:center">
+    <button class="go" id="go-btn" onclick="location.href='/?ready=1'">Launch System →</button>
+    <div class="err" id="err"></div>
+  </div>
+</div>
+
+<script>
+const API='';
+
+async function detect(){
+  const s=document.getElementById('cli-status');
+  s.innerHTML='<div style="color:var(--t2)">Scanning...</div>';
+  try{
+    const r=await(await fetch(API+'/api/providers/detect',{method:'POST'})).json();
+    let html='',anyReady=false;
+    for(const[pid,info]of Object.entries(r)){
+      const ready=info.ready;
+      if(ready)anyReady=true;
+      const cls=ready?'on':'off';
+      const label=ready?'detected':'not found';
+      html+=`<div><span class="dot ${cls}"></span>${info.name||pid}: ${label}</div>`;
+    }
+    s.innerHTML=html;
+    if(anyReady)showGo();
+  }catch(e){
+    s.innerHTML=`<div style="color:var(--r)">Error: ${e.message}</div>`;
+  }
+}
+
+async function saveKeys(){
+  const s=document.getElementById('key-status');
+  const keys=[
+    {provider:'openrouter',key:document.getElementById('key-openrouter').value.trim()},
+    {provider:'google',key:document.getElementById('key-google').value.trim()},
+    {provider:'openai',key:document.getElementById('key-openai').value.trim()},
+    {provider:'kimi',key:document.getElementById('key-kimi').value.trim()},
+  ].filter(k=>k.key);
+
+  if(!keys.length){s.innerHTML='<div class="err">Enter at least one key</div>';return}
+
+  let saved=0;
+  for(const k of keys){
+    try{
+      await fetch(API+'/api/providers/config',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({provider:k.provider,auth:'api_key',api_key:k.key})});
+      saved++;
+    }catch(e){}
+  }
+  s.innerHTML=`<div style="color:var(--ac);font-size:9px;margin-top:6px">${saved} key(s) saved</div>`;
+  if(saved>0)showGo();
+}
+
+function showGo(){
+  document.getElementById('go-btn').classList.add('on');
+  document.getElementById('err').textContent='';
+}
+
+// Auto-detect on load
+detect();
+</script>
+</body>
+</html>

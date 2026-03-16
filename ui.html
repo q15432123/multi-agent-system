@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Agent-System</title>
+<link rel="stylesheet" href="https://unpkg.com/@xterm/xterm@5.5.0/css/xterm.css">
+<script src="https://unpkg.com/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+<script src="https://unpkg.com/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#040408;--s1:#08080e;--s2:#0c0c14;--bd:rgba(0,255,136,.12);
+  --t1:#d8dcd8;--t2:rgba(160,180,160,.7);
+  --ac:#00ff88;--ac-dim:rgba(0,255,136,.6);--ac-glow:rgba(0,255,136,.15);
+  --r:#ff3355;--b:#5eaaff;--y:#ffc244;
+  --log-ts:#6a9eff;--log-agent:#ffc244;
+  --ease:cubic-bezier(.16,1,.3,1);
+}
+body{font-family:'SF Mono','Cascadia Code','Courier New',monospace;background:var(--bg);color:var(--t1);height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-weight:500}
+
+/* ─── Layout ─── */
+.app{display:flex;height:100vh}
+
+/* ─── Left: Log Panel ─── */
+.left{width:300px;background:var(--s1);border-right:1px solid var(--bd);display:flex;flex-direction:column;z-index:20}
+
+.sys-bar{
+  padding:8px 12px;border-bottom:1px solid var(--bd);font-size:9px;letter-spacing:1px;
+  display:flex;gap:16px;color:var(--t2);text-transform:uppercase;
+  background:linear-gradient(180deg,rgba(0,255,136,.02),transparent);
+}
+.sys-bar span{color:var(--ac);text-shadow:0 0 5px rgba(0,255,136,.4);transition:color .6s var(--ease)}
+
+.log{flex:1;overflow-y:auto;padding:6px 10px;font-size:9.5px;line-height:1.7;scrollbar-width:thin;scrollbar-color:var(--bd) transparent}
+.log::-webkit-scrollbar{width:3px}
+.log::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+.log .l{opacity:0;animation:logIn .4s var(--ease) forwards;color:var(--t1);font-weight:500}
+.log .l .log-ts{color:var(--log-ts);opacity:.7}
+.log .l .log-ag{color:var(--log-agent);font-weight:600}
+.log .l.hi{color:var(--ac);text-shadow:0 0 4px rgba(0,255,136,.3)}
+.log .l.err,.log .l.l-err{color:var(--r);text-shadow:0 0 4px rgba(255,51,85,.3)}
+.log .l.task,.log .l.l-warn{color:var(--y);text-shadow:0 0 4px rgba(255,194,68,.3)}
+.log .l.l-info{color:var(--t1)}
+.log .l.l-dbg{color:var(--t2);opacity:.6}
+.log .l .log-evt{color:var(--b);font-weight:600;font-size:8px}
+.log .l .log-meta{color:var(--t2);font-size:7.5px;opacity:.6}
+@keyframes logIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+
+.pm-bar{border-top:1px solid var(--bd);display:flex;flex-direction:column}
+.pm-label{font-size:8px;color:var(--ac-dim);padding:6px 10px 0;letter-spacing:1px;text-transform:uppercase}
+.pm-row{display:flex}
+.pm-bar input{
+  flex:1;background:rgba(0,255,136,.03);border:none;padding:10px 12px;
+  color:var(--ac);font-family:inherit;font-size:12px;outline:none;letter-spacing:.3px;
+}
+.pm-bar input::placeholder{color:var(--t2);font-size:11px}
+.pm-bar input:focus{background:rgba(0,255,136,.06)}
+.pm-bar button{
+  background:rgba(0,255,136,.08);border:none;border-left:1px solid var(--bd);
+  color:var(--ac);padding:10px 16px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:700;
+  letter-spacing:1px;transition:all .3s var(--ease);
+  text-shadow:0 0 5px rgba(0,255,136,.3);
+}
+.pm-bar button:hover{background:rgba(0,255,136,.15)}
+
+/* Floating panel input bar */
+.fp-input{display:flex;border-top:1px solid rgba(0,255,136,.1);flex-shrink:0}
+.fp-input input{flex:1;background:rgba(0,255,136,.03);border:none;padding:8px 10px;color:var(--ac);font-family:inherit;font-size:11px;outline:none}
+.fp-input input::placeholder{color:var(--t2);font-size:10px}
+.fp-input button{background:rgba(0,255,136,.08);border:none;border-left:1px solid rgba(0,255,136,.1);color:var(--ac);padding:8px 12px;cursor:pointer;font-family:inherit;font-size:9px;font-weight:600}
+.fp-input button:hover{background:rgba(0,255,136,.15)}
+
+/* API panel empty state */
+.fp-empty{color:var(--t2);font-size:10px;padding:20px;text-align:center;opacity:.6}
+
+/* ─── Right: Canvas ─── */
+.right{flex:1;position:relative}
+
+/* HUD */
+.hud{
+  position:absolute;top:0;left:0;right:0;z-index:30;
+  padding:10px 20px;display:flex;justify-content:space-between;align-items:center;
+  background:linear-gradient(180deg,var(--bg) 60%,transparent);
+}
+.hud-brand{font-size:11px;color:var(--ac);letter-spacing:4px;text-transform:uppercase;font-weight:700;text-shadow:0 0 8px rgba(0,255,136,.4)}
+.hud-stats{display:flex;gap:20px;font-size:8px;color:var(--t1);letter-spacing:1.5px;text-transform:uppercase;font-weight:500}
+.hud-stats span{color:var(--ac);text-shadow:0 0 5px rgba(0,255,136,.4)}
+.hud-actions{display:flex;gap:4px}
+.hud-btn{
+  background:transparent;border:1px solid rgba(0,255,136,.18);color:var(--t1);
+  padding:5px 12px;font-family:inherit;font-size:8px;letter-spacing:1px;font-weight:600;
+  cursor:pointer;transition:all .4s var(--ease);text-transform:uppercase;
+}
+.hud-btn:hover{color:var(--ac);border-color:rgba(0,255,136,.3);box-shadow:0 0 16px var(--ac-glow)}
+.hud-btn.on{color:var(--ac);border-color:rgba(0,255,136,.3);box-shadow:0 0 12px var(--ac-glow),inset 0 0 12px rgba(0,255,136,.05)}
+
+/* Bottom HUD */
+.hud-bottom{
+  position:absolute;bottom:0;left:0;right:0;z-index:30;
+  padding:8px 20px;display:flex;justify-content:center;gap:24px;
+  font-size:8px;color:var(--t1);letter-spacing:1.5px;text-transform:uppercase;font-weight:500;
+  background:linear-gradient(0deg,var(--bg) 40%,transparent);
+}
+.hud-bottom span{color:var(--ac);text-shadow:0 0 5px rgba(0,255,136,.4)}
+
+/* Canvas */
+.canvas{position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden}
+.cv-layer{
+  position:absolute;inset:0;transform-origin:0 0;
+  will-change:transform;backface-visibility:hidden;
+}
+.grid{
+  position:absolute;width:4000px;height:4000px;left:-1000px;top:-1000px;z-index:0;
+  background-image:
+    linear-gradient(var(--bd) 1px,transparent 1px),
+    linear-gradient(90deg,var(--bd) 1px,transparent 1px);
+  background-size:40px 40px;
+  opacity:.3;
+}
+.canvas svg{position:absolute;width:4000px;height:4000px;left:-1000px;top:-1000px;pointer-events:none;z-index:5}
+.canvas .nds{position:absolute;inset:0;z-index:10}
+
+/* Performance: hide details during zoom/pan */
+.cv-layer.zooming .nd .rl,
+.cv-layer.zooming .nd .st,
+.cv-layer.zooming .nd .bar{visibility:hidden}
+.cv-layer.zooming .cn{stroke-dasharray:none;animation:none}
+
+/* ─── Node ─── */
+.nd{
+  position:absolute;background:rgba(8,8,14,.95);
+  border:1px solid rgba(0,255,136,.1);
+  padding:10px 14px;cursor:move;user-select:none;min-width:110px;
+  transition:box-shadow .5s var(--ease),border-color .5s var(--ease),transform .3s var(--ease);
+  opacity:0;animation:nodeIn .6s var(--ease) forwards;
+}
+.nd:hover{
+  border-color:rgba(0,255,136,.25);
+  box-shadow:0 0 24px rgba(0,255,136,.08),0 0 48px rgba(0,255,136,.04);
+  transform:scale(1.02);
+}
+.nd.pm{
+  border-color:rgba(0,255,136,.2);
+  box-shadow:0 0 30px rgba(0,255,136,.06),0 0 60px rgba(0,255,136,.03);
+}
+.nd.selected{
+  border-color:rgba(0,255,136,.4);
+  box-shadow:0 0 20px rgba(0,255,136,.15),0 0 40px rgba(0,255,136,.08),0 0 80px rgba(0,255,136,.04);
+}
+@keyframes nodeIn{
+  from{opacity:0;transform:scale(.9) translateY(8px)}
+  to{opacity:1;transform:scale(1) translateY(0)}
+}
+
+.nd .nm{font-size:9px;color:var(--ac);font-weight:700;letter-spacing:1.5px;text-transform:uppercase;text-shadow:0 0 6px rgba(0,255,136,.35)}
+.nd.pm .nm{color:var(--ac);text-shadow:0 0 8px rgba(0,255,136,.5)}
+.nd .rl{font-size:7.5px;color:var(--t1);margin-top:3px;letter-spacing:.5px;opacity:.8}
+.nd .st{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:7.5px;color:var(--t1);opacity:.7;font-weight:500}
+.nd .dot{width:4px;height:4px;border-radius:50%;transition:all .6s var(--ease)}
+.dot.on{background:var(--ac);box-shadow:0 0 6px var(--ac),0 0 12px rgba(0,255,136,.3)}
+.dot.off{background:var(--t2)}
+.nd .bar{height:1.5px;background:rgba(0,255,136,.06);margin-top:6px;border-radius:1px;overflow:hidden}
+.nd .bar-f{height:100%;background:var(--ac-dim);border-radius:1px;transition:width 2s var(--ease);opacity:.6}
+
+/* Ports */
+.nd .pt{
+  position:absolute;width:6px;height:6px;background:rgba(0,255,136,.15);
+  border-radius:50%;cursor:crosshair;z-index:20;
+  transition:all .3s var(--ease);
+}
+.nd .pt-o{right:-3px;top:50%;transform:translateY(-50%)}
+.nd .pt-i{left:-3px;top:50%;transform:translateY(-50%)}
+.nd .pt:hover{background:var(--ac);box-shadow:0 0 10px var(--ac);transform:translateY(-50%) scale(1.8)}
+
+/* Connections — always visible */
+.cn{stroke:rgba(0,255,136,.25);stroke-width:1.2;fill:none;stroke-dasharray:8 4;animation:dsh 20s linear infinite}
+.cn:hover{stroke:rgba(0,255,136,.5);stroke-width:2}
+@keyframes dsh{to{stroke-dashoffset:-300}}
+.cn-a{fill:rgba(0,255,136,.3)}
+
+/* Light pulse particle */
+.pulse-dot{fill:var(--ac);filter:drop-shadow(0 0 6px var(--ac)) drop-shadow(0 0 12px rgba(0,255,136,.5))}
+.cn.firing{stroke:rgba(0,255,136,.5);stroke-width:2;transition:stroke .2s,stroke-width .2s}
+.cn-err{stroke:rgba(255,51,85,.4)!important;stroke-dasharray:6 4!important;animation:none!important}
+.cn-err:hover{stroke:rgba(255,51,85,.7)!important}
+
+/* Node status animations */
+.nd.active{border-color:rgba(0,255,136,.35);animation:nodeIn .6s var(--ease) forwards,ndPulse 2s ease-in-out infinite}
+@keyframes ndPulse{0%,100%{box-shadow:0 0 15px rgba(0,255,136,.08)}50%{box-shadow:0 0 30px rgba(0,255,136,.2),0 0 60px rgba(0,255,136,.08)}}
+.nd.error{border-color:rgba(255,51,85,.4);animation:nodeIn .6s var(--ease) forwards,ndShake .4s ease-in-out}
+@keyframes ndShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.nd.offline{opacity:.6;border-color:rgba(160,180,160,.2)}
+
+/* Watcher status on nodes */
+.nd .wt{font-size:7px;margin-top:3px;letter-spacing:.5px;font-weight:600}
+.nd .wt.wt-work{color:var(--ac);opacity:.6}
+.nd .wt.wt-warn{color:var(--y);animation:blink 1s ease-in-out infinite}
+.nd .wt.wt-timeout{color:var(--r);animation:blink .5s ease-in-out infinite}
+.nd .wt.wt-done{color:var(--ac);opacity:.4}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.nd .force-btn{
+  margin-top:3px;background:none;border:1px solid rgba(255,51,85,.3);
+  color:var(--r);font-size:7px;padding:1px 6px;cursor:pointer;font-family:inherit;
+  font-weight:600;transition:all .2s var(--ease);
+}
+.nd .force-btn:hover{background:rgba(255,51,85,.15);border-color:var(--r)}
+
+/* ─── Floating Panels (Multi-Window CLI) ─── */
+.fp{
+  position:fixed;z-index:50;
+  background:rgba(8,8,14,.88);border:1px solid rgba(0,255,136,.18);
+  display:flex;flex-direction:column;
+  box-shadow:0 4px 40px rgba(0,0,0,.6),0 0 1px rgba(0,255,136,.2);
+  backdrop-filter:blur(8px);
+  animation:fpIn .3s var(--ease);
+  min-width:320px;min-height:200px;
+  overflow:hidden;
+}
+.fp.focused{z-index:55;border-color:rgba(0,255,136,.35);box-shadow:0 4px 40px rgba(0,0,0,.7),0 0 20px rgba(0,255,136,.08)}
+@keyframes fpIn{from{opacity:0;transform:scale(.95) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.fp-h{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:4px 6px 4px 12px;border-bottom:1px solid rgba(0,255,136,.1);
+  cursor:move;user-select:none;flex-shrink:0;
+  background:rgba(0,255,136,.03);
+}
+.fp-h .fp-tl{font-size:8px;color:var(--ac);letter-spacing:2px;text-transform:uppercase;font-weight:600;text-shadow:0 0 5px rgba(0,255,136,.3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fp-h .fp-ctrl{display:flex;gap:2px;align-items:center;flex-shrink:0}
+.fp-h .fp-ctrl button{
+  background:none;border:1px solid rgba(0,255,136,.08);color:var(--t2);cursor:pointer;
+  font-size:8px;padding:1px 6px;font-family:inherit;font-weight:600;transition:all .2s var(--ease);
+  line-height:1.4;
+}
+.fp-h .fp-ctrl button:hover{color:var(--ac);border-color:rgba(0,255,136,.3)}
+.fp-h .fp-ctrl .fp-close:hover{color:var(--r);border-color:rgba(255,51,85,.3)}
+.fp-h .fp-ctrl .fp-min:hover{color:var(--y);border-color:rgba(255,194,68,.3)}
+.fp-body{flex:1;overflow:hidden;position:relative}
+.fp-body.fp-api{
+  overflow-y:auto;padding:10px 14px;font-size:11px;line-height:1.6;
+  color:var(--t1);white-space:pre-wrap;word-break:break-word;
+  scrollbar-width:thin;scrollbar-color:var(--bd) transparent;
+}
+
+/* Resize handles */
+.fp .fp-rs{position:absolute;z-index:2}
+.fp .fp-rs-r{right:0;top:0;bottom:0;width:4px;cursor:ew-resize}
+.fp .fp-rs-b{bottom:0;left:0;right:0;height:4px;cursor:ns-resize}
+.fp .fp-rs-rb{right:0;bottom:0;width:10px;height:10px;cursor:nwse-resize}
+
+/* Minimized icon (floats near node) */
+.fp-icon{
+  position:fixed;z-index:45;width:28px;height:28px;
+  background:rgba(8,8,14,.9);border:1px solid rgba(0,255,136,.25);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:8px;color:var(--ac);font-weight:700;
+  box-shadow:0 0 12px rgba(0,255,136,.1);
+  animation:fpIn .2s var(--ease);transition:all .2s var(--ease);
+}
+.fp-icon:hover{border-color:var(--ac);box-shadow:0 0 20px rgba(0,255,136,.2);transform:scale(1.15)}
+
+/* ─── Modals ─── */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;backdrop-filter:blur(4px)}
+.modal.on{display:flex;align-items:center;justify-content:center}
+
+/* Create Modal */
+.cm{background:var(--s1);border:1px solid var(--bd);padding:24px;width:380px;animation:modalIn .4s var(--ease)}
+.cm h2{font-size:9px;color:var(--ac);letter-spacing:3px;margin-bottom:14px;text-transform:uppercase;font-weight:700;text-shadow:0 0 5px rgba(0,255,136,.4)}
+.cm input,.cm select{
+  width:100%;background:var(--bg);border:1px solid var(--bd);color:var(--t1);
+  padding:7px 10px;font-family:inherit;font-size:10px;margin-bottom:6px;outline:none;
+  transition:border-color .3s var(--ease);
+}
+.cm input:focus,.cm select:focus{border-color:rgba(0,255,136,.3)}
+.cm .rw{display:flex;gap:6px}
+.cm .cb{
+  background:transparent;border:1px solid var(--bd);color:var(--t1);
+  padding:6px 16px;cursor:pointer;font-family:inherit;font-size:8px;letter-spacing:1px;font-weight:600;
+  transition:all .4s var(--ease);text-transform:uppercase;
+}
+.cm .cb:hover{color:var(--ac);border-color:rgba(0,255,136,.3)}
+.cm .cb.p{color:var(--ac-dim);border-color:rgba(0,255,136,.2)}
+.cm .cb.sel{color:var(--ac);border-color:rgba(0,255,136,.4);box-shadow:0 0 12px var(--ac-glow)}
+
+/* Hover Tooltip */
+.tip{
+  position:fixed;z-index:100;pointer-events:none;
+  background:rgba(8,8,14,.96);border:1px solid rgba(0,255,136,.25);
+  padding:8px 12px;max-width:320px;font-size:8.5px;line-height:1.6;
+  box-shadow:0 0 20px rgba(0,255,136,.08);display:none;
+}
+.tip.on{display:block}
+.tip .tip-nm{color:var(--ac);font-weight:700;letter-spacing:1px;text-transform:uppercase;text-shadow:0 0 5px rgba(0,255,136,.4)}
+.tip .tip-model{color:var(--y);margin-top:2px;font-weight:600}
+.tip .tip-msg{color:var(--t1);margin-top:4px;word-break:break-all;font-weight:500}
+.tip .tip-msg:empty{display:none}
+
+/* Active Task Panel */
+.task-panel{
+  position:absolute;top:42px;right:10px;z-index:35;
+  background:rgba(8,8,14,.94);border:1px solid var(--bd);
+  width:260px;max-height:300px;overflow-y:auto;font-size:8px;
+  scrollbar-width:thin;scrollbar-color:var(--bd) transparent;
+  display:none;
+}
+.task-panel.on{display:block}
+.task-panel .tp-h{
+  padding:6px 10px;border-bottom:1px solid var(--bd);color:var(--ac);
+  letter-spacing:2px;text-transform:uppercase;font-weight:700;
+  display:flex;justify-content:space-between;align-items:center;
+  text-shadow:0 0 5px rgba(0,255,136,.4);
+}
+.task-panel .tp-h button{background:none;border:none;color:var(--t1);cursor:pointer;font-size:10px}
+.task-panel .tp-item{
+  padding:5px 10px;border-bottom:1px solid rgba(0,255,136,.04);
+  display:flex;align-items:center;gap:6px;
+}
+.tp-item .tp-dot{width:5px;height:5px;border-radius:50%;background:var(--ac);animation:ndPulse 2s ease-in-out infinite;flex-shrink:0}
+.tp-item .tp-agent{color:var(--log-agent);font-weight:700;min-width:40px}
+.tp-item .tp-desc{color:var(--t1);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tp-item .tp-time{color:var(--t1);opacity:.5;flex-shrink:0}
+.task-panel .tp-empty{padding:12px;text-align:center;color:var(--t1);opacity:.5}
+
+/* Log filter indicator */
+.log-filter{
+  padding:4px 10px;background:rgba(0,255,136,.06);border-bottom:1px solid var(--bd);
+  font-size:8px;color:var(--ac);display:none;align-items:center;justify-content:space-between;font-weight:600;
+  text-shadow:0 0 4px rgba(0,255,136,.3);
+}
+.log-filter.on{display:flex}
+.log-filter button{background:none;border:none;color:var(--r);cursor:pointer;font-size:9px}
+
+/* Ambient glow */
+.ambient{
+  position:fixed;top:50%;left:50%;width:600px;height:600px;
+  background:radial-gradient(circle,rgba(0,255,136,.015) 0%,transparent 70%);
+  transform:translate(-50%,-50%);pointer-events:none;z-index:0;
+  animation:breathe 8s ease-in-out infinite;
+}
+@keyframes breathe{0%,100%{opacity:.5;transform:translate(-50%,-50%) scale(1)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}}
+
+/* Subtle scanline */
+.scan{
+  position:fixed;inset:0;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,transparent 0px,transparent 2px,rgba(0,0,0,.015) 2px,rgba(0,0,0,.015) 4px);
+}
+</style>
+</head>
+<body>
+<div class="scan"></div>
+<div class="ambient"></div>
+
+<div class="app">
+
+<!-- Left Panel -->
+<div class="left">
+  <div class="sys-bar">
+    <div>UP <span id="up">0s</span></div>
+    <div>ON <span id="on">0</span></div>
+    <div>QUE <span id="qu">0</span></div>
+  </div>
+  <div class="log-filter" id="lf"><span id="lf-txt">Filter: —</span><button onclick="clearFilter()">✕</button></div>
+  <div class="log" id="log"></div>
+  <div class="pm-bar">
+    <div class="pm-label">Send task to Boss (PM)</div>
+    <div class="pm-row">
+      <input id="pmi" placeholder="e.g. Build me a todo app..." onkeydown="if(event.key==='Enter')sendPM()">
+      <button onclick="sendPM()">SEND</button>
+    </div>
+  </div>
+</div>
+
+<!-- Right Panel -->
+<div class="right">
+  <div class="hud">
+    <div class="hud-brand">Multi-Agent-System</div>
+    <div class="hud-stats">
+      <div>Nodes <span id="hn">0</span></div>
+      <div>Tasks <span id="ht">0</span></div>
+    </div>
+    <div class="hud-actions">
+      <button class="hud-btn" onclick="startAll()">▶ START</button>
+      <button class="hud-btn" onclick="stopAll()">⏹ STOP</button>
+      <button class="hud-btn" onclick="$('cm-modal').classList.add('on')">+ NEW</button>
+      <button class="hud-btn" id="lk" onclick="togConn()">⬡ LINK</button>
+      <button class="hud-btn" id="tb" onclick="togTasks()">▤ TASKS</button>
+      <button class="hud-btn" onclick="launchTests()">⚗ TEST</button>
+    </div>
+  </div>
+  <div class="task-panel" id="tp">
+    <div class="tp-h"><span>Active Tasks</span><button onclick="togTasks()">✕</button></div>
+    <div id="tp-list"><div class="tp-empty">No active tasks</div></div>
+  </div>
+
+  <div class="canvas" id="cv">
+    <div class="cv-layer" id="cvl">
+      <div class="grid"></div>
+      <svg id="svg"></svg>
+      <div class="nds" id="nds"></div>
+    </div>
+  </div>
+
+  <div class="hud-bottom">
+    <div>Protocol <span>MAS/1.0</span></div>
+    <div>Render <span id="fps">60</span>fps</div>
+    <div>Latency <span id="lat">-</span>ms</div>
+  </div>
+</div>
+</div>
+
+<!-- Floating panels injected by JS -->
+<div id="fp-layer"></div>
+
+<!-- Create Modal -->
+<div class="modal" id="cm-modal" onclick="if(event.target===this)this.classList.remove('on')">
+  <div class="cm">
+    <h2>Deploy Agent</h2>
+    <div class="rw" style="margin-bottom:10px">
+      <button class="cb" id="rp" onclick="sR('pm')">◆ PM</button>
+      <button class="cb" id="rw" onclick="sR('w')">▪ Worker</button>
+    </div>
+    <input id="cn" placeholder="Callsign">
+    <input id="cr" placeholder="Designation">
+    <div class="rw">
+      <select id="cp" onchange="fM()"><option value="">Provider</option>
+        <option value="anthropic">Claude</option><option value="openai">Codex</option>
+        <option value="google">Gemini</option><option value="kimi-api">Kimi</option>
+        <option value="deepseek">DeepSeek</option><option value="qwen">Qwen</option>
+        <option value="ollama">Ollama</option>
+      </select>
+      <select id="cmm"><option>Model</option></select>
+    </div>
+    <div class="rw" style="margin-top:10px">
+      <button class="cb p" onclick="deploy()">DEPLOY</button>
+      <button class="cb" onclick="$('cm-modal').classList.remove('on')">ABORT</button>
+    </div>
+  </div>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script>
+const API='',T={};
+// F.n = nodes, F.s/px/py = zoom/pan, F.cm/cf = connect mode
+// flowMap 不存在前端 — 每次 poll 從後端取，直接畫
+const F={n:{},s:1,px:0,py:0,cm:false,cf:null,lastMsg:{}};
+let flowMap={};  // 後端回傳的快照，只讀
+let prevFlow={}; // 上一次的 flowMap，用來偵測 pulsing 變化
+let watcherState={}; // agent_id → {status,silence_sec,...}
+const $=id=>document.getElementById(id);
+let t0=Date.now(),sR_='w',tmFS=12,curTid=null,logFilter=null;
+
+const P={
+  anthropic:{cli:'claude',m:[{id:'claude-opus-4-6',n:'Opus'},{id:'claude-sonnet-4-6',n:'Sonnet'},{id:'claude-haiku-4-5-20241022',n:'Haiku'}]},
+  openai:{cli:'codex',m:[{id:'gpt-4o',n:'GPT-4o'},{id:'o3-mini',n:'o3m'}]},
+  google:{cli:'gemini',m:[{id:'gemini-3.0',n:'G3.0'}]},
+  'kimi-api':{cli:'kimi',m:[{id:'kimi-k2.5',n:'K2.5'}]},
+  deepseek:{cli:'cmd',m:[{id:'deepseek-chat',n:'DS-V3'}]},
+  qwen:{cli:'cmd',m:[{id:'qwen3-max',n:'Q3Max'}]},
+  ollama:{cli:'cmd',m:[{id:'llama3',n:'Ll3'}]},
+};
+function fM(){const p=$('cp').value,s=$('cmm');s.innerHTML='<option>Model</option>';(P[p]?.m||[]).forEach(m=>s.innerHTML+=`<option value="${m.id}">${m.n}</option>`)}
+
+// ─── Log System (JSONL WebSocket) ───
+let lc=0;
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+// Level → CSS class + color
+const LVL={'INFO':'l-info','WARN':'l-warn','ERROR':'l-err','DEBUG':'l-dbg'};
+
+function L(t,c=''){
+  // Fallback for manual log calls (non-JSONL)
+  renderLogEntry({timestamp:new Date().toISOString(),level:c==='err'?'ERROR':c==='task'?'WARN':'INFO',
+    agent_id:'',event_type:'UI',message:t});
+}
+
+function renderLogEntry(e){
+  const el=$('log'),d=document.createElement('div');
+  const lvl=e.level||'INFO';
+  d.className='l '+(LVL[lvl]||'');
+  d.style.animationDelay=(lc%5)*30+'ms';
+  const ts=e.timestamp?new Date(e.timestamp).toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
+  const num=String(++lc).padStart(4,'0');
+  const aid=e.agent_id||'';
+  const evt=e.event_type||'';
+  const msg=e.message||'';
+
+  // Track last message per agent
+  if(aid)F.lastMsg[aid]=msg.slice(0,80);
+
+  let html=`<span class="log-ts">${num} ${ts}</span>`;
+  if(aid)html+=` <span class="log-ag">[${esc(aid)}]</span>`;
+  if(evt)html+=` <span class="log-evt">${esc(evt)}</span>`;
+  html+=` ${esc(msg)}`;
+  // Extra info (tokens, duration)
+  if(e.extra){
+    if(e.extra.total_tokens)html+=` <span class="log-meta">${e.extra.total_tokens}tok</span>`;
+    if(e.extra.duration_ms)html+=` <span class="log-meta">${e.extra.duration_ms}ms</span>`;
+  }
+  d.innerHTML=html;
+
+  // Respect log filter
+  if(logFilter&&aid!==logFilter)d.style.display='none';
+
+  el.appendChild(d);
+  if(el.children.length>500)el.removeChild(el.firstChild);
+  el.scrollTop=el.scrollHeight;
+}
+
+// WebSocket log stream
+function connectLogWS(){
+  const ws=new WebSocket(`ws://${location.host}/ws/logs`);
+  ws.onmessage=e=>{
+    try{const entry=JSON.parse(e.data);renderLogEntry(entry)}catch(err){}
+  };
+  ws.onclose=()=>{setTimeout(connectLogWS,3000)};
+  ws.onerror=()=>{};
+}
+connectLogWS();
+
+// Load recent logs on startup
+fetch(API+'/api/logs?limit=30').then(r=>r.json()).then(logs=>{
+  if(Array.isArray(logs))logs.forEach(renderLogEntry);
+}).catch(()=>{});
+
+// ─── Nodes ───
+async function load(){
+  const a=await(await fetch(API+'/api/agents')).json();
+  // Merge PTY + API agent status
+  let ptyList=[];try{ptyList=await(await fetch(API+'/api/terminal/list')).json()}catch(e){}
+  let apiList=[];try{apiList=await(await fetch(API+'/api/agent/list')).json()}catch(e){}
+  const ptySet=new Set(ptyList.map(t=>t.agent_id));
+  const apiSet=new Set(apiList.filter(a=>a.alive).map(a=>a.agent_id));
+  const cur=new Set(a.map(x=>x.filename));
+  for(const id of Object.keys(F.n))if(!cur.has(id))delete F.n[id];
+
+  a.forEach((x,i)=>{
+    const id=x.filename,tg=(x.tags||'').toString(),pm=tg.includes('pm')||(x.role||'').toLowerCase().includes('project manager');
+    const isMock=tg.includes('mock')||tg.includes('cmd')||tg.includes('bash');
+    const on=isMock?ptySet.has(id):true; // API agents are always "on" once loaded
+    if(!F.n[id]){
+      const ang=(i/a.length)*Math.PI*2,r=pm?0:160+Math.random()*100;
+      F.n[id]={x:pm?380:380+Math.cos(ang)*r,y:pm?280:280+Math.sin(ang)*r,a:x,pm,on,
+        cli:isMock?(tg.includes('mock')?'mock':'cmd'):'api'};
+    }else{F.n[id].a=x;F.n[id].on=on}
+  });
+
+  // Auto-connect PM → all workers in backend
+  const pmIds=Object.entries(F.n).filter(([k,v])=>v.pm).map(([k])=>k);
+  const wkIds=Object.entries(F.n).filter(([k,v])=>!v.pm).map(([k])=>k);
+  for(const pid of pmIds){
+    for(const wid of wkIds){
+      const key=`${pid}→${wid}`;
+      if(!flowMap[key]){
+        fetch(API+'/api/flow/connect',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({source:pid,target:wid})}).catch(()=>{});
+      }
+    }
+  }
+
+  try{flowMap=await(await fetch(API+'/api/flow')).json()}catch(e){flowMap={}}
+
+  render();$('hn').textContent=a.length;
+  $('on').textContent=Object.values(F.n).filter(n=>n.on).length;
+}
+
+function applyTransform(){
+  const cvl=$('cvl');
+  if(cvl)cvl.style.transform=`translate3d(${F.px}px,${F.py}px,0) scale(${F.s})`;
+}
+
+function render(){
+  const el=$('nds');
+  applyTransform();
+  let h='';let i=0;
+  for(const[id,n]of Object.entries(F.n)){
+    const nm=n.a?.name||id,rl=n.a?.role||'',w=n.pm?30+Math.random()*70:20+Math.random()*80;
+    // Node class driven by watcher state (API mode) or online status (PTY mode)
+    const ws=watcherState[id]||{};
+    let ndCls='';
+    if(ws.status==='timeout') ndCls='error';
+    else if(ws.status==='warned') ndCls='active'; // pulse = stalled but alive
+    else if(ws.status==='working') ndCls='active';
+    else if(ws.status==='done') ndCls='active';
+    else ndCls=n.on?'active':'offline';
+    const wtCls=ws.status==='timeout'?'wt-timeout':ws.status==='warned'?'wt-warn':ws.status==='working'?'wt-work':ws.status==='done'?'wt-done':'';
+    const wtText=ws.status==='timeout'?`TIMEOUT ${Math.round(ws.silence_sec||0)}s`:ws.status==='warned'?`STALLED ${Math.round(ws.silence_sec||0)}s`:ws.status==='working'?`WORKING ${Math.round(ws.task_age_sec||0)}s`:ws.status==='done'?'DONE':'';
+    // Status dot: green=active/working, yellow=warned, red=timeout, gray=idle
+    const dotCls=ws.status==='timeout'?'off':ws.status==='warned'?'on':(ws.status==='working'||ws.status==='done'||n.on)?'on':'off';
+    const stLabel=ws.status==='working'?'WORKING':ws.status==='warned'?'STALLED':ws.status==='timeout'?'TIMEOUT':ws.status==='done'?'DONE':n.on?'READY':'STANDBY';
+    h+=`<div class="nd ${n.pm?'pm':''} ${ndCls}" id="fn-${id}" style="left:${n.x}px;top:${n.y}px;animation-delay:${i*60}ms"
+      onmousedown="dg(event,'${id}')" ondblclick="oT('${id}','${n.cli}')"
+      onclick="filterLog('${id}')" onmouseenter="showTip(event,'${id}')" onmouseleave="hideTip()">
+      <div class="pt pt-i" onmousedown="event.stopPropagation()" onclick="cTo('${id}')"></div>
+      <div class="pt pt-o" onmousedown="event.stopPropagation()" onclick="cFr('${id}')"></div>
+      <div class="nm">${n.pm?'◆ ':''}${nm}</div>
+      <div class="rl">${rl}</div>
+      <div class="st"><span class="dot ${dotCls}"></span>${stLabel}</div>
+      ${ws.status==='working'?`<div class="bar"><div class="bar-f" style="width:${w}%"></div></div>`:''}
+      ${wtText?`<div class="wt ${wtCls}">${wtText}</div>`:''}
+      ${ws.status==='timeout'?`<button class="force-btn" onclick="event.stopPropagation();forceComplete('${id}')">FORCE NEXT ▶</button>`:''}
+    </div>`;i++;
+  }
+  el.innerHTML=h;dC();
+}
+
+// ─── Draw Connections from flowMap (coordinate-decoupled: uses node ID → position) ───
+function dC(){
+  let s=`<defs>
+    <marker id="a" markerWidth="5" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0,5 2,0 4" class="cn-a"/></marker>
+    <marker id="a-err" markerWidth="5" markerHeight="4" refX="5" refY="2" orient="auto"><polygon points="0 0,5 2,0 4" fill="rgba(255,51,85,.4)"/></marker>
+    <radialGradient id="pg"><stop offset="0%" stop-color="#00ff88" stop-opacity="1"/><stop offset="100%" stop-color="#00ff88" stop-opacity="0"/></radialGradient>
+  </defs>`;
+
+  for(const[key,conn] of Object.entries(flowMap)){
+    const fn=F.n[conn.from], tn=F.n[conn.to];
+    if(!fn||!tn)continue;
+    // Dynamic position from node ID (coordinate-decoupled)
+    const x1=fn.x+110,y1=fn.y+25,x2=tn.x,y2=tn.y+25,cx=(x1+x2)/2;
+    const pid=`cn-${conn.from}-${conn.to}`.replace(/[^a-zA-Z0-9-]/g,'_');
+    const st=conn.status||'idle';
+    const isErr=st==='error', isPulse=st==='pulsing';
+    const cls='cn'+(isErr?' cn-err':'')+(isPulse?' firing':'');
+    const marker=isErr?'url(#a-err)':'url(#a)';
+    s+=`<path class="${cls}" id="${pid}" d="M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}" marker-end="${marker}" onclick="rC('${conn.from}','${conn.to}')" style="pointer-events:stroke;cursor:pointer"/>`;
+    if(isErr){
+      const mx=(x1+x2)/2,my=(y1+y2)/2;
+      s+=`<text x="${mx}" y="${my-8}" fill="#ff3355" font-size="7" text-anchor="middle" font-family="monospace" font-weight="600">${conn.error||'ERROR'}</text>`;
+    }
+  }
+  $('svg').innerHTML=s;
+}
+
+// ─── Light Pulse Animation ───
+function firePulse(fromId,toId){
+  const svg=$('svg');if(!svg)return;
+  const pid=`cn-${fromId}-${toId}`.replace(/[^a-zA-Z0-9-]/g,'_');
+  const path=document.getElementById(pid);
+  if(!path)return;
+  path.classList.add('firing');
+  setTimeout(()=>path.classList.remove('firing'),1200);
+  const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  dot.setAttribute('r','4');dot.classList.add('pulse-dot');
+  const mot=document.createElementNS('http://www.w3.org/2000/svg','animateMotion');
+  mot.setAttribute('dur','0.8s');mot.setAttribute('fill','freeze');mot.setAttribute('repeatCount','1');
+  const mp=document.createElementNS('http://www.w3.org/2000/svg','mpath');
+  mp.setAttributeNS('http://www.w3.org/1999/xlink','xlink:href','#'+pid);
+  mp.setAttribute('href','#'+pid);
+  mot.appendChild(mp);dot.appendChild(mot);svg.appendChild(dot);
+  const glow=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  glow.setAttribute('r','8');glow.setAttribute('fill','url(#pg)');glow.setAttribute('opacity','0.5');
+  const mot2=document.createElementNS('http://www.w3.org/2000/svg','animateMotion');
+  mot2.setAttribute('dur','0.8s');mot2.setAttribute('fill','freeze');mot2.setAttribute('repeatCount','1');
+  const mp2=document.createElementNS('http://www.w3.org/2000/svg','mpath');
+  mp2.setAttributeNS('http://www.w3.org/1999/xlink','xlink:href','#'+pid);
+  mp2.setAttribute('href','#'+pid);
+  mot2.appendChild(mp2);glow.appendChild(mot2);svg.appendChild(glow);
+  setTimeout(()=>{dot.remove();glow.remove()},1000);
+}
+
+// ─── Error shake on node ───
+function shakeNode(id){
+  const el=$('fn-'+id);if(!el)return;
+  el.classList.remove('error');void el.offsetWidth;el.classList.add('error');
+  setTimeout(()=>el.classList.remove('error'),500);
+}
+
+// Drag
+function dg(e,id){e.preventDefault();if(e.ctrlKey||e.metaKey)return;
+  const n=F.n[id],ox=(e.clientX-F.px)/F.s-n.x,oy=(e.clientY-F.py)/F.s-n.y;
+  document.onmousemove=e2=>{n.x=(e2.clientX-F.px)/F.s-ox;n.y=(e2.clientY-F.py)/F.s-oy;const el=$('fn-'+id);if(el){el.style.left=n.x+'px';el.style.top=n.y+'px'}dC()};
+  document.onmouseup=()=>{document.onmousemove=document.onmouseup=null}}
+
+// ─── Connect — calls /api/flow/connect, flowMap updates on next poll ───
+function togConn(){F.cm=!F.cm;$('lk').classList.toggle('on');F.cf=null}
+function cFr(id){if(!F.cm)togConn();F.cf=id;L(`Wire from: ${id}`,'hi')}
+function cTo(id){
+  if(!F.cf||F.cf===id)return;
+  const src=F.cf;
+  // Call backend — flowMap updates on next poll
+  fetch(API+'/api/flow/connect',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({source:src,target:id})}).then(r=>r.json()).then(r=>{
+      L(`Wire: ${src} → ${id}`,'hi');
+      // Micro-shake feedback on both nodes
+      shakeNode(src);shakeNode(id);
+      // Immediately add to local flowMap for instant visual
+      const key=`${src}→${id}`;
+      flowMap[key]={from:src,to:id,status:'idle'};
+      dC();
+    }).catch(()=>{L(`Wire failed: ${src} → ${id}`,'err')});
+  F.cf=null;if(F.cm)togConn();
+}
+function rC(f,t){
+  fetch(API+'/api/flow/connect',{method:'DELETE',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({source:f,target:t})}).then(()=>{
+      const key=`${f}→${t}`;
+      delete flowMap[key];
+      dC();
+      L(`Wire removed: ${f} → ${t}`,'err');
+    }).catch(()=>{});
+}
+
+// Zoom
+let _zoomRaf=null,_zoomTimer=null;
+$('cv')?.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const cvl=$('cvl');
+  const rect=$('cv').getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const oldS=F.s;
+  F.s=Math.max(.2,Math.min(3,F.s+(e.deltaY>0?-.05:.05)));
+  const ratio=F.s/oldS;
+  F.px=mx-(mx-F.px)*ratio;
+  F.py=my-(my-F.py)*ratio;
+  if(cvl&&!cvl.classList.contains('zooming'))cvl.classList.add('zooming');
+  clearTimeout(_zoomTimer);
+  _zoomTimer=setTimeout(()=>{if(cvl)cvl.classList.remove('zooming')},200);
+  if(!_zoomRaf){_zoomRaf=requestAnimationFrame(()=>{applyTransform();_zoomRaf=null})}
+},{passive:false});
+
+// Pan
+(function(){
+  const cv=$('cv');if(!cv)return;
+  let panning=false,sx,sy,spx,spy;
+  cv.addEventListener('mousedown',e=>{
+    if(e.button===1||(e.button===0&&(e.ctrlKey||e.metaKey))){
+      e.preventDefault();panning=true;sx=e.clientX;sy=e.clientY;spx=F.px;spy=F.py;
+      cv.style.cursor='grabbing';
+      const cvl=$('cvl');if(cvl)cvl.classList.add('zooming');
+    }
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!panning)return;
+    F.px=spx+(e.clientX-sx);F.py=spy+(e.clientY-sy);
+    if(!_zoomRaf){_zoomRaf=requestAnimationFrame(()=>{applyTransform();_zoomRaf=null})}
+  });
+  window.addEventListener('mouseup',()=>{
+    if(panning){panning=false;cv.style.cursor='';const cvl=$('cvl');if(cvl)cvl.classList.remove('zooming')}
+  });
+})();
+
+// ═══════════════════════════════════════
+// Floating Panel Multi-Window System
+// ═══════════════════════════════════════
+const W={};  // {id: {el,tm,ws,ft,fs,minimized,iconEl,x,y,w,h}}
+let _topZ=50;
+
+// Tile algorithm: find non-overlapping position
+function tilePos(){
+  const used=Object.values(W).filter(w=>!w.minimized).map(w=>({x:w.x,y:w.y,w:w.w,h:w.h}));
+  const sw=window.innerWidth-320, sh=window.innerHeight; // exclude left panel
+  const pw=Math.min(560,Math.floor(sw/2)), ph=Math.min(400,Math.floor(sh/2));
+  const cols=Math.max(1,Math.floor(sw/pw)), rows=Math.max(1,Math.floor(sh/ph));
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const x=320+c*pw+8, y=r*ph+40;
+      const overlap=used.some(u=>Math.abs(u.x-x)<pw-20&&Math.abs(u.y-y)<ph-20);
+      if(!overlap)return {x,y,w:pw-16,h:ph-16};
+    }
+  }
+  // Fallback: cascade
+  const n=Object.keys(W).length;
+  return {x:320+30*(n%8)+8, y:40+30*(n%8), w:520, h:360};
+}
+
+function focusPanel(id){
+  Object.values(W).forEach(w=>w.el?.classList.remove('focused'));
+  if(W[id]?.el){W[id].el.classList.add('focused');W[id].el.style.zIndex=++_topZ}
+}
+
+function oT(id,cli){
+  // If already open, just focus
+  if(W[id]&&W[id].el&&!W[id].minimized){focusPanel(id);return}
+  if(W[id]&&W[id].minimized){restorePanel(id);return}
+
+  const pos=tilePos();
+  const isApi=(cli==='api'); // API mode: clean text panel. PTY mode: xterm
+  const el=document.createElement('div');
+  el.className='fp focused';
+  el.id='fp-'+id;
+  el.style.cssText=`left:${pos.x}px;top:${pos.y}px;width:${pos.w}px;height:${pos.h}px;z-index:${++_topZ}`;
+  const nm=F.n[id]?.a?.name||id;
+  el.innerHTML=`<div class="fp-h">
+    <span class="fp-tl">${nm.toUpperCase()} ${isApi?'(API)':'(PTY)'}</span>
+    <div class="fp-ctrl">
+      ${isApi?'':`<button onclick="fpFont('${id}',-1)">A-</button><button onclick="fpFont('${id}',1)">A+</button>`}
+      <button class="fp-min" onclick="minimizePanel('${id}')" title="Minimize">─</button>
+      <button class="fp-close" onclick="closePanel('${id}')" title="Close">✕</button>
+    </div>
+  </div>
+  <div class="fp-body ${isApi?'fp-api':''}" id="fpb-${id}"><div class="fp-empty">${isApi?'Waiting for task... Type below or send from the left panel.':'Loading terminal...'}</div></div>
+  ${isApi?`<div class="fp-input"><input placeholder="Send task to ${nm}..." onkeydown="if(event.key==='Enter')fpSend('${id}',this)"><button onclick="fpSend('${id}',this.previousElementSibling)">SEND</button></div>`:''}
+  <div class="fp-rs fp-rs-r"></div>
+  <div class="fp-rs fp-rs-b"></div>
+  <div class="fp-rs fp-rs-rb"></div>`;
+
+  $('fp-layer').appendChild(el);
+
+  const win={el,minimized:false,iconEl:null,x:pos.x,y:pos.y,w:pos.w,h:pos.h,fs:12,tm:null,ws:null,ft:null,isApi};
+  W[id]=win;
+
+  // Drag header
+  const hdr=el.querySelector('.fp-h');
+  hdr.addEventListener('mousedown',e=>{
+    if(e.target.tagName==='BUTTON')return;
+    e.preventDefault();focusPanel(id);
+    const ox=e.clientX-win.x, oy=e.clientY-win.y;
+    const mv=e2=>{win.x=e2.clientX-ox;win.y=Math.max(0,e2.clientY-oy);el.style.left=win.x+'px';el.style.top=win.y+'px'};
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+  setupResize(el,win,id);
+  el.addEventListener('mousedown',()=>focusPanel(id));
+
+  const body=el.querySelector('.fp-body');
+
+  if(isApi){
+    // ─── API Mode: clean text streaming from /ws/agent/{id} ───
+    // Load existing output first
+    fetch(API+'/api/agent/output/'+id).then(r=>r.json()).then(r=>{
+      if(r.output)body.textContent=r.output;
+    }).catch(()=>{});
+
+    // WebSocket streaming — no ANSI, no xterm, just clean text
+    const ws=new WebSocket(`ws://${location.host}/ws/agent/${id}`);
+    let gotData=false;
+    ws.onmessage=e=>{
+      if(!gotData){body.textContent='';gotData=true} // clear empty state
+      body.textContent+=e.data;
+      body.scrollTop=body.scrollHeight;
+    };
+    ws.onclose=()=>{if(gotData)body.textContent+='\n[STREAM ENDED]'};
+    win.ws=ws;
+    L(`[${id}] API stream connected`,'hi');
+
+  }else{
+    // ─── PTY Mode: xterm (mock/cmd/bash) ───
+    new ResizeObserver(()=>{if(W[id]?.ft)W[id].ft.fit()}).observe(body);
+    fetch(API+'/api/terminal/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_id:id,cli_type:cli})}).then(()=>{
+      const tm=new Terminal({theme:{background:'rgba(4,4,8,0.01)',foreground:'#b0c0b0',cursor:'#00ff88',selectionBackground:'rgba(0,255,136,.15)'},fontSize:win.fs,fontFamily:"'SF Mono','Cascadia Code','Courier New',monospace",cursorBlink:true,scrollback:3000,allowTransparency:true});
+      const ft=new FitAddon.FitAddon();tm.loadAddon(ft);tm.open(body);ft.fit();
+      const ws=new WebSocket(`ws://${location.host}/ws/terminal/${id}`);
+      let ob='',ot;
+      ws.onmessage=e=>{tm.write(e.data);
+        ob+=e.data;clearTimeout(ot);ot=setTimeout(()=>{if(ob){fetch(API+'/api/terminal/output/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:ob})}).catch(()=>{});ob=''}},500)};
+      ws.onclose=()=>{tm.write('\r\n\x1b[31m[LINK LOST]\x1b[0m\r\n')};
+      tm.onData(d=>{if(ws.readyState===1)ws.send(d)});
+      win.tm=tm;win.ws=ws;win.ft=ft;
+      T[id]={tm,ws,ft};
+      L(`[${id}] PTY linked`,'hi');setTimeout(()=>ft.fit(),100);
+    });
+  }
+}
+
+function setupResize(el,win,id){
+  const rs=el.querySelectorAll('.fp-rs');
+  rs.forEach(handle=>{
+    handle.addEventListener('mousedown',e=>{
+      e.preventDefault();e.stopPropagation();focusPanel(id);
+      const isR=handle.classList.contains('fp-rs-r')||handle.classList.contains('fp-rs-rb');
+      const isB=handle.classList.contains('fp-rs-b')||handle.classList.contains('fp-rs-rb');
+      const sx=e.clientX,sy=e.clientY,sw=win.w,sh=win.h;
+      const mv=e2=>{
+        if(isR){win.w=Math.max(320,sw+(e2.clientX-sx));el.style.width=win.w+'px'}
+        if(isB){win.h=Math.max(200,sh+(e2.clientY-sy));el.style.height=win.h+'px'}
+      };
+      const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);if(W[id]?.ft)W[id].ft.fit()};
+      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+    });
+  });
+}
+
+function minimizePanel(id){
+  const win=W[id];if(!win||!win.el)return;
+  win.minimized=true;
+  win.el.style.display='none';
+
+  // Create icon near the node
+  const node=F.n[id];
+  const icon=document.createElement('div');
+  icon.className='fp-icon';
+  icon.textContent=id.slice(0,2).toUpperCase();
+  icon.title=id+' (click to restore)';
+  icon.onclick=()=>restorePanel(id);
+  // Position near node (convert canvas coords to screen)
+  if(node){
+    const rect=$('cv')?.getBoundingClientRect()||{left:320,top:0};
+    icon.style.left=(rect.left+(node.x+120)*F.s+F.px)+'px';
+    icon.style.top=(rect.top+(node.y-5)*F.s+F.py)+'px';
+  }else{
+    icon.style.right='10px';icon.style.bottom=(40+Object.values(W).filter(w=>w.minimized).length*34)+'px';
+  }
+  document.body.appendChild(icon);
+  win.iconEl=icon;
+  L(`[${id}] minimized`);
+}
+
+function restorePanel(id){
+  const win=W[id];if(!win)return;
+  win.minimized=false;
+  if(win.iconEl){win.iconEl.remove();win.iconEl=null}
+  if(win.el){win.el.style.display='flex';focusPanel(id);if(win.ft)setTimeout(()=>win.ft.fit(),50)}
+  L(`[${id}] restored`);
+}
+
+function closePanel(id){
+  const win=W[id];if(!win)return;
+  if(win.iconEl){win.iconEl.remove()}
+  if(win.ws){try{win.ws.close()}catch(e){}}
+  if(win.el){win.el.remove()}
+  delete W[id];
+  delete T[id];
+  L(`[${id}] panel closed`);
+}
+
+function fpFont(id,d){
+  const win=W[id];if(!win||!win.tm)return;
+  win.fs=Math.max(8,Math.min(24,win.fs+d*2));
+  win.tm.options.fontSize=win.fs;
+  if(win.ft)win.ft.fit();
+}
+
+// ─── Hover Tooltip ───
+function showTip(e,id){
+  const tip=$('tip'),n=F.n[id];if(!tip||!n)return;
+  const nm=n.a?.name||id,rl=n.a?.role||'',tags=(n.a?.tags||[]).join(', ')||n.cli;
+  const last=F.lastMsg[id]||'(no output yet)';
+  const ws=watcherState[id];
+  const wsInfo=ws?`<br>Watcher: <b>${ws.status}</b> | silent ${Math.round(ws.silence_sec||0)}s | task ${Math.round(ws.task_age_sec||0)}s`:'';
+  tip.innerHTML=`<div class="tip-nm">${nm}</div><div class="tip-model">Model: ${tags} | ${n.on?'ACTIVE':'OFFLINE'}${wsInfo}</div><div class="tip-msg">${rl?rl+'<br>':''}Last: ${last.replace(/</g,'&lt;')}</div>`;
+  tip.classList.add('on');
+  tip.style.left=Math.min(e.clientX+12,window.innerWidth-340)+'px';
+  tip.style.top=Math.min(e.clientY+12,window.innerHeight-120)+'px';
+}
+function hideTip(){$('tip')?.classList.remove('on')}
+
+// ─── Log Filter ───
+function filterLog(id){
+  logFilter=logFilter===id?null:id;
+  if(logFilter){$('lf').classList.add('on');$('lf-txt').textContent='Filter: '+logFilter.toUpperCase();
+    document.querySelectorAll('#log .l').forEach(el=>{el.style.display=el.textContent.includes(`[${logFilter}]`)?'':'none'});
+  }else clearFilter();
+}
+function clearFilter(){logFilter=null;$('lf')?.classList.remove('on');document.querySelectorAll('#log .l').forEach(el=>el.style.display='')}
+
+// ─── Task Panel ───
+function togTasks(){$('tp')?.classList.toggle('on');$('tb')?.classList.toggle('on')}
+function updateTaskPanel(tasks){
+  const el=$('tp-list');if(!el)return;
+  if(!tasks||!tasks.length){el.innerHTML='<div class="tp-empty">No active tasks</div>';return}
+  el.innerHTML=tasks.slice(-20).map(t=>{
+    const ago=Math.floor((Date.now()-(t.time||0)*1000)/1000);
+    const ags=ago>60?Math.floor(ago/60)+'m':Math.max(0,ago)+'s';
+    return `<div class="tp-item"><div class="tp-dot"></div><div class="tp-agent">${(t.target||'?').slice(0,8)}</div><div class="tp-desc">${(t.content||'').slice(0,50)}</div><div class="tp-time">${ags}</div></div>`;
+  }).join('');
+}
+
+// ─── Mock Tests ───
+async function launchTests(){
+  L('Launching mock test pipeline...','task');
+  const r=await(await fetch(API+'/api/test/launch',{method:'POST'})).json();
+  if(r.status==='ok'){
+    L(`Pipeline: ${r.pipeline}`,'hi');
+    r.agents.forEach(a=>L(`  ${a.agent_id}: ${a.started?'started':'FAILED'} (${a.scenario})`));
+    L(r.hint,'task');
+    setTimeout(()=>load(),1500);
+  }else{L('Test launch failed','err')}
+}
+async function stopTests(){
+  await fetch(API+'/api/test/stop',{method:'POST'});
+  L('Mock tests stopped','err');load();
+}
+
+// ─── Force Complete ───
+async function forceComplete(id){
+  L(`[FORCE] ${id} — forcing completion...`,'task');
+  const r=await(await fetch(API+'/api/watcher/force/'+id,{method:'POST'})).json();
+  if(r.ok){L(`[FORCE] ${id} → pushed to downstream`,'hi')}
+  else{L(`[FORCE] ${id} failed: ${r.error}`,'err')}
+}
+
+// ─── Send task to specific agent from floating panel ───
+function fpSend(id,input){
+  const t=input.value.trim();if(!t)return;
+  fetch(API+'/api/agent/run',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({agent_id:id,message:t})});
+  L(`> [${id}] ${t}`,'hi');
+  input.value='';
+  // Clear empty state in panel
+  const body=$('fpb-'+id);
+  if(body&&body.querySelector('.fp-empty'))body.textContent='Processing...';
+}
+
+// PM — send via API agent/run (not PTY terminal/write)
+function sendPM(){
+  const i=$('pmi'),t=i.value.trim();if(!t)return;
+  const pm=Object.entries(F.n).find(([k,v])=>v.pm)?.[0];
+  if(!pm){L('ERR: no PM deployed','err');return}
+  // Use API mode: dispatch to PM agent via /api/agent/run
+  fetch(API+'/api/agent/run',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({agent_id:pm,message:t})});
+  L(`> ${t}`,'hi');i.value='';
+  const targets=t.matchAll(/@(\w[\w-]*)/g);
+  for(const m of targets){
+    const tid=Object.keys(F.n).find(k=>k.toLowerCase().includes(m[1].toLowerCase()));
+    if(tid)setTimeout(()=>firePulse(pm,tid),300);
+  }
+}
+
+// Start/Stop
+async function startAll(){
+  L('Initiating full deployment...','hi');
+  const a=await(await fetch(API+'/api/agents')).json();
+  for(const x of a){
+    const tg=(x.tags||'').toString();let c='cmd';['claude','gemini','kimi','codex'].forEach(v=>{if(tg.includes(v))c=v});
+    await fetch(API+'/api/terminal/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_id:x.filename,cli_type:c})});
+    L(`▶ ${x.filename} (${c})`);await new Promise(r=>setTimeout(r,3000));
+  }
+  L('All units deployed','hi');load();
+}
+async function stopAll(){
+  const a=await(await fetch(API+'/api/terminal/list')).json();
+  for(const t of a){await fetch(API+'/api/terminal/stop/'+t.agent_id,{method:'POST'});L(`⏹ ${t.agent_id}`)}
+  L('All units offline','err');load();
+}
+
+// Create
+function sR(r){sR_=r;$('rp').classList.toggle('sel',r==='pm');$('rw').classList.toggle('sel',r==='w')}
+async function deploy(){
+  const nm=$('cn').value.trim(),rl=sR_==='pm'?'Project Manager':$('cr').value.trim(),pv=$('cp').value;
+  if(!nm)return;const cli=(P[pv]||{}).cli||'cmd',tg=[cli];if(sR_==='pm')tg.push('pm');
+  await fetch(API+'/api/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nm,role:rl,tags:tg,prompt:`${nm}, ${rl}`})});
+  $('cm-modal').classList.remove('on');$('cn').value=$('cr').value='';
+  L(`+ ${nm} deployed`,'hi');load();
+}
+
+// ─── Poll — flowMap + watcher drive everything ───
+setInterval(async()=>{
+  try{
+    // 1. flowMap — single source of truth for connections
+    const newFlow=await(await fetch(API+'/api/flow')).json();
+    for(const[key,conn] of Object.entries(newFlow)){
+      const prev=prevFlow[key];
+      if(conn.status==='pulsing'&&(!prev||prev.status!=='pulsing')){
+        firePulse(conn.from,conn.to);
+      }
+      if(conn.status==='error'&&(!prev||prev.status!=='error')){
+        shakeNode(conn.to);
+      }
+    }
+    prevFlow=JSON.parse(JSON.stringify(newFlow));
+    flowMap=newFlow;
+    dC();
+
+    // 2. Task log
+    const r=await(await fetch(API+'/api/runner/status')).json();
+    const tl=r.task_log||[];
+    $('qu').textContent=tl.length;$('ht').textContent=tl.length;
+    updateTaskPanel(tl);
+
+    // 3. Watcher status — patch DOM directly (no full re-render)
+    const ws=await(await fetch(API+'/api/watcher/status')).json();
+    let changed=false;
+    for(const[aid,st] of Object.entries(ws)){
+      const prev=watcherState[aid];
+      if(!prev||prev.status!==st.status||Math.abs((prev.silence_sec||0)-(st.silence_sec||0))>2){
+        changed=true;break;
+      }
+    }
+    if(Object.keys(ws).length!==Object.keys(watcherState).length)changed=true;
+    watcherState=ws;
+    if(changed)render(); // Only re-render when watcher actually changes
+
+    // 4. Online count
+    $('on').textContent=Object.values(F.n).filter(n=>n.on).length;
+  }catch(e){}
+
+  const s=Math.floor((Date.now()-t0)/1000);
+  $('up').textContent=s>3600?`${Math.floor(s/3600)}h${Math.floor(s%3600/60)}m`:`${Math.floor(s/60)}m${s%60}s`;
+  $('lat').textContent=Math.floor(10+Math.random()*15);
+},3000);
+
+L('Multi-Agent-System v0.2 online','hi');
+L('Loading flow map...','');
+load();
+</script>
+</body>
+</html>
