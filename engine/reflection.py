@@ -13,12 +13,16 @@ logger = logging.getLogger("reflection")
 REFLECTION_PROMPT = """You are a strict quality reviewer. Score the agent's output on a scale of 1-10.
 
 Criteria:
-- Correctness: Does it actually solve the task?
-- Completeness: Are all parts of the task addressed?
-- Quality: Is the code/content well-structured?
+- Did the agent actually complete the task requirements?
+- Does the code have obvious bugs or missing imports?
+- Are important features missing?
+
+Rules:
+- score >= 7: pass=true (good enough)
+- score <= 6: pass=false (needs fix)
 
 Output ONLY valid JSON:
-{"score": <1-10>, "issues": ["issue1", "issue2"], "suggestion": "what to improve"}"""
+{"score": <1-10>, "pass": true/false, "issues": ["problem1", "problem2"], "fix_instruction": "specific instructions to fix the problems"}"""
 
 
 async def reflect(agent_id: str, task: str, output: str,
@@ -29,9 +33,9 @@ async def reflect(agent_id: str, task: str, output: str,
         {"score": int, "issues": list, "suggestion": str, "pass": bool}
     """
     if not provider:
-        provider = "openrouter"
+        provider = "local_proxy"
     if not model:
-        model = llm_client.resolve_model(["claude"])
+        model = llm_client.resolve_model(["kimi"])
 
     user_msg = f"""Task given to agent:
 {task[:1000]}
@@ -73,7 +77,9 @@ Rate the quality."""
             data = {"score": 7, "issues": [], "suggestion": ""}
 
     score = data.get("score", 7)
-    data["pass"] = score >= 6
+    data["pass"] = score >= 7
+    if "fix_instruction" not in data:
+        data["fix_instruction"] = data.get("suggestion", "")
     logger.info(f"[Reflection] {agent_id}: score={score}, pass={data['pass']}")
 
     # DNA 整合：更新 DNA 評分（如果有對應的 DNA）

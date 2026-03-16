@@ -269,21 +269,25 @@ class AgentRunner:
             ctx.output_buffer = full_response
             ctx.history.append({"role": "assistant", "content": full_response})
 
-            # 修剪歷史（保留最近 50 條）
             if len(ctx.history) > 50:
                 ctx.history = ctx.history[-50:]
 
-            # 持久化對話歷史到 workspace
             self._save_history(agent_id)
-
-            # 自動擷取 code blocks 寫入 workspace
             self._extract_and_save_code(agent_id, full_response)
+
+            # ─── Reflection + Retry（非 PM agent）───
+            if not ctx.is_pm and full_response and len(full_response) > 20:
+                full_response = self._reflect_and_retry(
+                    agent_id, user_message, full_response, messages, tools, ctx, syslog
+                )
 
             done = self.check_completion(full_response)
             ctx.status = "done"
-            signal = "json" if done else "api_complete"
-            syslog.log_complete(agent_id, signal, len(full_response))
+            syslog.log_complete(agent_id, "done", len(full_response))
             logger.info(f"[AgentRunner] {agent_id} finished: {len(full_response)} chars")
+
+            # DNA GC：每 10 個任務完成跑一次淘汰
+            self._maybe_gc()
 
             if self._loop:
                 asyncio.run_coroutine_threadsafe(
@@ -445,6 +449,99 @@ class AgentRunner:
         output = ctx.output_buffer or ctx.last_output or f"[Force completed: {agent_id}]"
         ctx.status = "done"
         return output
+
+    # ─── Reflection + Retry ───
+
+    _task_count = 0  # 全域計數器
+
+    def _reflect_and_retry(self, agent_id, task, output, messages, tools, ctx, syslog):
+        """品質檢查：不通過就 retry，最多 2 次"""
+        MAX_RETRIES = 2
+
+        for attempt in range(MAX_RETRIES + 1):
+            # 呼叫 reflection
+            try:
+                if self._loop:
+                    from engine.reflection import reflect
+                    future = asyncio.run_coroutine_threadsafe(
+                        reflect(agent_id, task, output), self._loop)
+                    result = future.result(timeout=30)
+                else:
+                    result = {"pass": True, "score": 7}
+            except Exception as e:
+                logger.warning(f"[AgentRunner] Reflection error for {agent_id}: {e}")
+                result = {"pass": True, "score": 7}
+
+            score = result.get("score", 7)
+            passed = result.get("pass", True)
+            self._push_to_ws(agent_id, f"\n[Reflection] Score: {score}/10 {'PASS' if passed else 'FAIL'}\n")
+            syslog.info(agent_id, "REFLECTION",
+                        f"score={score} pass={passed} attempt={attempt+1}",
+                        extra={"score": score, "pass": passed})
+
+            if passed or attempt >= MAX_RETRIES:
+                return output
+
+            # ─── Retry: 把 fix_instruction 加進 messages 再跑一次 ───
+            fix = result.get("fix_instruction", "") or result.get("suggestion", "")
+            issues = result.get("issues", [])
+            retry_msg = f"Your output scored {score}/10 and did not pass review.\n"
+            if issues:
+                retry_msg += f"Issues: {', '.join(issues)}\n"
+            if fix:
+                retry_msg += f"Fix: {fix}\n"
+            retry_msg += "Please fix these issues and try again."
+
+            self._push_to_ws(agent_id, f"\n[Retry {attempt+1}/{MAX_RETRIES}] {retry_msg[:200]}\n")
+            logger.info(f"[AgentRunner] {agent_id} retry {attempt+1}: score={score}")
+
+            messages.append({"role": "user", "content": retry_msg})
+            ctx.history.append({"role": "user", "content": retry_msg})
+
+            # 重新呼叫 LLM
+            try:
+                client = llm_client._get_client_for_provider(ctx.provider)
+                response = client.chat.completions.create(
+                    model=ctx.model, messages=messages, tools=tools,
+                    temperature=0.7, max_tokens=4096)
+                msg = response.choices[0].message
+                output = msg.content or output
+                ctx.output_buffer = output
+                ctx.last_output = output
+                ctx.history.append({"role": "assistant", "content": output})
+                self._push_to_ws(agent_id, output)
+                self._extract_and_save_code(agent_id, output)
+            except Exception as e:
+                logger.error(f"[AgentRunner] {agent_id} retry LLM error: {e}")
+                break
+
+        return output
+
+    def _maybe_gc(self):
+        """每 10 個任務完成，自動跑 DNA 淘汰"""
+        AgentRunner._task_count += 1
+        if AgentRunner._task_count % 10 != 0:
+            return
+        try:
+            from engine.dna.dna_manager import garbage_collect
+            removed = garbage_collect(min_score=4.0, min_uses=3)
+            if removed:
+                # 也刪掉 _team/ 裡對應的 agent
+                from engine.dispatcher import dispatcher
+                for name in removed:
+                    agent_md = Path(__file__).parent.parent / "_team" / f"{name}.md"
+                    if agent_md.exists():
+                        agent_md.unlink()
+                    # 從 flowMap 移除
+                    keys_to_rm = [k for k in dispatcher.flow_map if name in k]
+                    for k in keys_to_rm:
+                        del dispatcher.flow_map[k]
+                    dispatcher._save_flow()
+                from engine.syslog import syslog
+                syslog.warn("system", "DNA_GC", f"Retired {len(removed)} agents: {removed}")
+                logger.info(f"[AgentRunner] DNA GC: retired {removed}")
+        except Exception as e:
+            logger.warning(f"[AgentRunner] DNA GC error: {e}")
 
     # ─── Memory Persistence (Step 4) ───
 
