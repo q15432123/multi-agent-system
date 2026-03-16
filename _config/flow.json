@@ -1,0 +1,10 @@
+{
+  "boss→alex": {
+    "from": "boss",
+    "to": "alex"
+  },
+  "boss→jordan": {
+    "from": "boss",
+    "to": "jordan"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "kimi": {
+    "auth": "oauth",
+    "access_token": "YOUR_KIMI_TOKEN_HERE",
+    "base_url": "https://api.kimi.com/coding/v1",
+    "model": "kimi-v1-2p5"
+  },
+  "openrouter": {
+    "auth": "api_key",
+    "api_key": "sk-or-v1-YOUR_KEY_HERE",
+    "model": "anthropic/claude-sonnet-4"
+  },
+  "google": {
+    "auth": "api_key",
+    "api_key": "YOUR_GOOGLE_API_KEY",
+    "model": "gemini-2.5-flash"
+  },
+  "openai": {
+    "auth": "api_key",
+    "api_key": "sk-YOUR_KEY_HERE",
+    "model": "gpt-4o"
+  }
+}

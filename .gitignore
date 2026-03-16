@@ -1,0 +1,23 @@
+# Secrets
+_config/providers.json
+.env
+
+# Runtime data
+_workspaces/
+_logs/
+_agent_dna/_archived/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Server logs
+server.log
+muteagent.log
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.obsidian/
+node_modules/
